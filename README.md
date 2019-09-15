@@ -1,1 +1,5 @@
-# puppet info
+# Puppet
+
+## A list examples
+
+- examples

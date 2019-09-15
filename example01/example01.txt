@@ -1,0 +1,428 @@
+Puppet – Manifest examples – Managing FILES – SERVICES
+
+This article is going to brief about creating new files , directories, changing the file permission, installing package and managing the services using puppet server on puppet agent nodes. For an example, if you want to configure the ntp client on 100’s of servers , you could simply write a small manifest on puppet server to achieve this task. This is applicable  for creating files, directories and changing the file permission etc…
+
+Puppet Server: UAHA (RHEL 7.2)
+Puppet Agent : uapa1  (RHEL 7.2)
+Environment: Production
+
+Example:1  Creating new file
+1.Login to the puppet server as root.
+ 
+2.Navigate to the production’s modules directory.  (You might have different environment than production ).
+[root@UA-HA production]# cd /etc/puppetlabs/code/environments/production
+[root@UA-HA production]# ls -lrt
+total 4
+-rw-r--r-- 1 pe-puppet pe-puppet 879 Jan 27 10:38 environment.conf
+drwxr-xr-x 5 root root 50 Feb 10 23:26 modules
+drwxr-xr-x 2 pe-puppet pe-puppet 35 Feb 11 00:12 manifests
+[root@UA-HA production]# cd modules/
+[root@UA-HA modules]# ls -lrt
+total 0
+drwxr-xr-x 3 root root 22 Feb 8 14:16 helloworld
+drwxr-xr-x 6 root root 65 Feb 8 15:15 accounts
+drwxr-xr-x 6 root root 65 Feb 10 23:36 httpd
+[root@UA-HA modules]#
+ 
+3. Task – Create new file under /tmp directory on puppet agents nodes using puppet server. To achieve this ,   Create a module called “testfile” with required set of directories. (Module should follow the certain rules)
+[root@UA-HA modules]# mkdir -p filetest/{files,templates,manifests}
+[root@UA-HA modules]# tree filetest
+filetest
+├── files
+├── manifests
+└── templates
+
+3 directories, 0 files
+ 
+4. Navigate to the manifest directory and write the manifest to create a file on puppet agent nodes.
+[root@UA-HA modules]# cd filetest/manifests/
+[root@UA-HA manifests]#
+[root@UA-HA manifests]# cat init.pp
+class filetest {
+file { '/tmp/sysctl.conf':
+  ensure  => present,
+  owner   => 'root',
+  group   => 'root',
+  mode    => '0777',
+  source  => 'puppet:///modules/filetest/sysctl.conf',
+   }
+}
+[root@UA-HA manifests]#
+
+ 
+5. Navigate to the “files” directory and create the file called sysctl.conf.
+[root@UA-HA manifests]# cd ../files
+[root@UA-HA files]#
+[root@UA-HA files]# echo "Creating the test file for Puppet demonstration" > sysctl.conf
+[root@UA-HA files]# ls -lrt
+total 4
+-rw-r--r-- 1 root root 48 Feb 14 09:17 sysctl.conf
+[root@UA-HA files]#
+We have successfully created the module. (To create the “sysctl.conf” file under /tmp location on puppet agent nodes with local source file.)
+ 
+6. If you want to create the test file across the production environment (All puppet agent nodes), you can call this module in site.pp. Otherwise , you can specify the node names in nodes.pp . Let’s call the “filetest” module on nodes.pp to create the file only on node uapa1.
+[root@UA-HA files]# cd ../../../manifests/
+[root@UA-HA manifests]# ls -lrt
+total 8
+-rw-r--r-- 1 pe-puppet pe-puppet 1226 Feb 10 23:44 site.pp
+-rw-r--r-- 1 root      root        35 Feb 14 08:12 nodes.pp
+[root@UA-HA manifests]#
+[root@UA-HA manifests]# cat nodes.pp
+node uapa1 {
+  include filetest
+}
+[root@UA-HA manifests]#
+ 
+7. Login to the puppet agent node “uapa1” and re-run the agent.
+
+[root@uapa1 ntp]# puppet agent -t
+Info: Using configured environment 'production'
+Info: Retrieving pluginfacts
+Info: Retrieving plugin
+Info: Loading facts
+Info: Caching catalog for uapa1
+Info: Applying configuration version '1455462582'
+Notice: /Stage[main]/Filetest/File[/tmp/sysctl.conf]/ensure: defined content as '{md5}761b152c34b22b8f6142b9860ec5ede9'
+Notice: Applied catalog in 0.68 seconds
+[root@uapa1 ntp]#
+ 
+8. Verify our work.
+[root@uapa1 ntp]# cat /tmp/sysctl.conf
+Creating the test file for Puppet demonstration
+[root@uapa1 ntp]#
+[root@uapa1 ntp]# ls -lrt /tmp/sysctl.conf
+-rwxrwxrwx 1 root root 48 Feb 14 10:37 /tmp/sysctl.conf
+[root@uapa1 ntp]#
+
+We can see that file has been created successfully on the puppet agent node with given permission.
+
+
+
+Example:2  Creating new directories:
+ 
+1.Login to the puppet server and navigate to the production environment’s module directory.
+[root@UA-HA modules]# cd /etc/puppetlabs/code/environments/production/modules
+ 
+2. Create a new module called “testdirs” and required subdirectories.
+
+[root@UA-HA modules]# mkdir -p testdirs/{files,templates,manifests}
+[root@UA-HA modules]# tree testdirs/
+testdirs/
+├── files
+├── manifests
+└── templates
+
+3 directories, 0 files
+[root@UA-HA modules]# pwd
+/etc/puppetlabs/code/environments/production/modules
+[root@UA-HA modules]#
+ 
+3.Navigate to “testdirs/manifests” directory and create a manifest.
+[root@UA-HA manifests]# cat init.pp
+class testdirs {
+
+# create a directory
+  file { '/etc/nagios':
+    ensure => 'directory',
+  }
+
+# a fuller example, including permissions and ownership
+  file { '/var/log/nagios':
+    ensure => 'directory',
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0777',
+  }
+
+}
+[root@UA-HA manifests]#
+This manifest will create a directory called “nagios” under “/etc/” and “/var/log” directories. For “/var/log/nagios” directory , we are setting the directory owner, group and permissions.
+ 
+4. Navigate to the “/etc/puppetlabs/code/environments/production/manifests” directory and update nodes.pp to call the newly created module.
+[root@UA-HA manifests]# cd ../../../manifests/
+[root@UA-HA manifests]# pwd
+/etc/puppetlabs/code/environments/production/manifests
+[root@UA-HA manifests]# cat nodes.pp
+node uapa1 {
+  include testdirs
+}
+[root@UA-HA manifests]#
+ 
+In this case, “nagios” directories will be just created on puppet agent node “uapa1”.  You can also specify number of nodes using single quotes.
+Example:
+node 'uapa1','uapa2','uapa3' {
+  include testdirs
+}
+ 
+5. Login to the puppet client node and re-run the puppet agent.
+[root@uapa1 ntp]# puppet agent -t
+Info: Using configured environment 'production'
+Info: Retrieving pluginfacts
+Info: Retrieving plugin
+Info: Loading facts
+Info: Caching catalog for uapa1
+Info: Applying configuration version '1455467939'
+Notice: /Stage[main]/Testdirs/File[/etc/nagios]/ensure: created
+Notice: /Stage[main]/Testdirs/File[/var/log/nagios]/ensure: created
+Notice: Applied catalog in 0.39 seconds
+[root@uapa1 ntp]#
+ 
+6.Verify our work.
+[root@uapa1 ntp]# ls -ld /etc/nagios/
+drwxr-xr-x 2 root root 6 Feb 14 11:59 /etc/nagios/
+[root@uapa1 ntp]# ls -ld /var/log/nagios/
+drwxrwxrwx 2 root root 6 Feb 14 11:59 /var/log/nagios/
+[root@uapa1 ntp]#
+You could see that both directories are created and “/var/log/nagios” directory has been created with specific permission as we defined in manifest.
+
+ 
+Example:3  Configuring NTP clients using puppet server 
+ 
+1. Assuming that you got a request to configure ntp clients on list of servers.
+Let’s create a new module called “nptconfig” with necessary directories.
+[root@UA-HA modules]# pwd
+/etc/puppetlabs/code/environments/production/modules
+[root@UA-HA modules]#
+[root@UA-HA modules]# mkdir -p ntpconfig/{files,templates,manifests}
+[root@UA-HA modules]# tree ntpconfig/
+ntp-config/
+├── files
+├── manifests
+└── templates
+
+3 directories, 0 files
+[root@UA-HA modules]#
+ 
+2. Let’s create the ntp.conf  under “ntpconfig/files” directory. This file will be pushed to the client nodes.
+[root@UA-HA files]# cat ntp.conf
+server 0.rhel.pool.ntp.org iburst
+server 1.rhel.pool.ntp.org iburst
+server 2.rhel.pool.ntp.org iburst
+server 3.rhel.pool.ntp.org iburst
+[root@UA-HA files]#
+[root@UA-HA files]# pwd
+/etc/puppetlabs/code/environments/production/modules/ntp-config/files
+[root@UA-HA files]#
+ 
+3.Navigate to the “ntpconfig” manifests directory and create a manifest like following.
+[root@UA-HA files]# cd ../manifests/
+[root@UA-HA manifests]# cat init.pp
+class ntpconfig {
+service { 'ntpd':
+  ensure  => running,
+  require => [
+    Package['ntp'],
+    File['/etc/ntp.conf'],
+  ],
+}
+
+package { 'ntp':
+  ensure => present,
+  before => Service['ntpd'],
+}
+
+file { '/etc/ntp.conf':
+  ensure => file,
+  mode   => '0600',
+  source => 'puppet:///modules/ntpconfig/ntp.conf',
+  before => Service['ntpd'],
+}
+}
+[root@UA-HA manifests]#
+ 
+You could understand this manifest by reading the code.  However , let me explain it.
+File name should be end with “.pp” extension. So we have created file called “init.pp” .
+Module name (ntpconfig) should be specified next to “class” always.
+Resource “service” is created to ensure “ntpd” daemon is started with required dependencies. (which are nothing but a NTP package and “ntp.conf” configuration file.)
+Creating second resource “package” to install NTP package. We have also mentioned that it needs to be done before starting the service.
+Creating third resource “file” to push the pre-configured ntp.conf file to the puppet agent nodes. We have also specified the location of pre-configured  ntp.conf file  on the puppet server.
+ 
+4. Navigate to production environment’s manifest directory for node declaration.
+[root@UA-HA manifests]# cd ../../../manifests/
+[root@UA-HA manifests]# ls -lrt
+total 8
+-rw-r--r-- 1 pe-puppet pe-puppet 1226 Feb 10 23:44 site.pp
+-rw-r--r-- 1 root      root        34 Feb 14 11:06 nodes.pp
+[root@UA-HA manifests]# vi nodes.pp
+[root@UA-HA manifests]# cat nodes.pp
+node uapa1 {
+  include ntpconfig
+}
+[root@UA-HA manifests]#
+[root@UA-HA manifests]# pwd
+/etc/puppetlabs/code/environments/production/manifests
+[root@UA-HA manifests]#
+ 
+5. Login to puppet agent node and re-run the agent .
+[root@uapa1 ~]# puppet agent -t
+Info: Using configured environment 'production'
+Info: Retrieving pluginfacts
+Info: Retrieving plugin
+Info: Loading facts
+Info: Caching catalog for uapa1
+Info: Applying configuration version '1455469306'
+Notice: /Stage[main]/Ntpconfig/Package[ntp]/ensure: created
+Notice: /Stage[main]/Ntpconfig/File[/etc/ntp.conf]/content:
+--- /etc/ntp.conf       2015-10-16 04:46:46.000000000 -0400
++++ /tmp/puppet-file20160214-11627-onodvu       2016-02-14 12:21:12.156342677 -0500
+@@ -1,58 +1,4 @@
+-# For more information about this file, see the man pages
+-# ntp.conf(5), ntp_acc(5), ntp_auth(5), ntp_clock(5), ntp_misc(5), ntp_mon(5).
+-
+-driftfile /var/lib/ntp/drift
+-
+-# Permit time synchronization with our time source, but do not
+-# permit the source to query or modify the service on this system.
+-restrict default nomodify notrap nopeer noquery
+-
+-# Permit all access over the loopback interface.  This could
+-# be tightened as well, but to do so would effect some of
+-# the administrative functions.
+-restrict 127.0.0.1
+-restrict ::1
+-
+-# Hosts on local network are less restricted.
+-#restrict 192.168.1.0 mask 255.255.255.0 nomodify notrap
+-
+-# Use public servers from the pool.ntp.org project.
+-# Please consider joining the pool (http://www.pool.ntp.org/join.html).
+ server 0.rhel.pool.ntp.org iburst
+ server 1.rhel.pool.ntp.org iburst
+ server 2.rhel.pool.ntp.org iburst
+ server 3.rhel.pool.ntp.org iburst
+-
+-#broadcast 192.168.1.255 autokey       # broadcast server
+-#broadcastclient                       # broadcast client
+-#broadcast 224.0.1.1 autokey           # multicast server
+-#multicastclient 224.0.1.1             # multicast client
+-#manycastserver 239.255.254.254                # manycast server
+-#manycastclient 239.255.254.254 autokey # manycast client
+-
+-# Enable public key cryptography.
+-#crypto
+-
+-includefile /etc/ntp/crypto/pw
+-
+-# Key file containing the keys and key identifiers used when operating
+-# with symmetric key cryptography.
+-keys /etc/ntp/keys
+-
+-# Specify the key identifiers which are trusted.
+-#trustedkey 4 8 42
+-
+-# Specify the key identifier to use with the ntpdc utility.
+-#requestkey 8
+-
+-# Specify the key identifier to use with the ntpq utility.
+-#controlkey 8
+-
+-# Enable writing of statistics records.
+-#statistics clockstats cryptostats loopstats peerstats
+-
+-# Disable the monitoring facility to prevent amplification attacks using ntpdc
+-# monlist command when default restrict does not include the noquery flag. See
+-# CVE-2013-5211 for more details.
+-# Note: Monitoring will not be disabled with the limited restriction flag.
+-disable monitor
+
+Notice: /Stage[main]/Ntpconfig/File[/etc/ntp.conf]/content: content changed '{md5}913c85f0fde85f83c2d6c030ecf259e9' to '{md5}d5c4683c4855fea95321374a64628c63'
+Notice: /Stage[main]/Ntpconfig/File[/etc/ntp.conf]/mode: mode changed '0644' to '0600'
+Notice: /Stage[main]/Ntpconfig/Service[ntpd]/ensure: ensure changed 'stopped' to 'running'
+Info: /Stage[main]/Ntpconfig/Service[ntpd]: Unscheduling refresh on Service[ntpd]
+Notice: Applied catalog in 15.17 seconds
+[root@uapa1 ~]#
+ 
+6. Verify the NTP status.
+[root@uapa1 ~]# ntpq -p
+     remote           refid      st t when poll reach   delay   offset  jitter
+==============================================================================
+*web10.hnshostin 193.67.79.202    2 u    5   64    1   79.417   -3.227   2.114
++ns02.hns.net.in 131.107.13.100   2 u    4   64    1   83.064    0.600   0.419
++125.62.193.121  129.6.15.29      2 u    3   64    1   99.803   27.798   2.151
+[root@uapa1 ~]#
+ 
+7. Verify the ntpd service.
+[root@uapa1 ~]# systemctl status ntpd
+● ntpd.service - Network Time Service
+   Loaded: loaded (/usr/lib/systemd/system/ntpd.service; disabled; vendor preset: disabled)
+   Active: active (running) since Sun 2016-02-14 12:21:12 EST; 1min 59s ago
+  Process: 11777 ExecStart=/usr/sbin/ntpd -u ntp:ntp $OPTIONS (code=exited, status=0/SUCCESS)
+ Main PID: 11778 (ntpd)
+   CGroup: /system.slice/ntpd.service
+           └─11778 /usr/sbin/ntpd -u ntp:ntp -g
+
+Feb 14 12:21:12 uapa1 ntpd[11778]: Listen normally on 3 br0 192.168.203.134 UDP 123
+Feb 14 12:21:12 uapa1 ntpd[11778]: Listen normally on 4 virbr0 192.168.122.1 UDP 123
+Feb 14 12:21:12 uapa1 ntpd[11778]: Listen normally on 5 lo ::1 UDP 123
+Feb 14 12:21:12 uapa1 ntpd[11778]: Listen normally on 6 br0 fe80::20c:29ff:feda:2ef9 UDP 123
+Feb 14 12:21:12 uapa1 ntpd[11778]: Listening on routing socket on fd #23 for interface updates
+Feb 14 12:21:12 uapa1 systemd[1]: Started Network Time Service.
+Feb 14 12:21:13 uapa1 ntpd[11778]: 0.0.0.0 c016 06 restart
+Feb 14 12:21:13 uapa1 ntpd[11778]: 0.0.0.0 c012 02 freq_set kernel 0.000 PPM
+Feb 14 12:21:13 uapa1 ntpd[11778]: 0.0.0.0 c011 01 freq_not_set
+Feb 14 12:21:14 uapa1 ntpd[11778]: 0.0.0.0 c614 04 freq_mode
+[root@uapa1 ~]#
+We can see that ntpd service is running fine but “autostart” is disabled . So, this service will not start once you  reboot the system. You can enable the autostart  using “systemctl enable ntpd” command. However , let me push this change from existing puppet module.
+ 
+8. Navigate back to module manifest directory. Edit init.pp file and add the highlighted line. (enable => “true”,)
+[root@UA-HA manifests]# cat init.pp
+class ntpconfig {
+service { 'ntpd':
+  ensure  => running,
+  enable  => "true",
+  require => [
+    Package['ntp'],
+    File['/etc/ntp.conf'],
+  ],
+}
+
+package { 'ntp':
+  ensure => present,
+  before => Service['ntpd'],
+}
+
+file { '/etc/ntp.conf':
+  ensure => file,
+  mode   => '0600',
+  source => 'puppet:///modules/ntpconfig/ntp.conf',
+  before => Service['ntpd'],
+}
+}
+[root@UA-HA manifests]#
+[root@UA-HA manifests]# pwd
+/etc/puppetlabs/code/environments/production/modules/ntpconfig/manifests
+[root@UA-HA manifests]#
+ 
+9. Go back to puppet agent node and just re-run the puppet agent.
+[root@uapa1 ~]# puppet agent -t
+Info: Using configured environment 'production'
+Info: Retrieving pluginfacts
+Info: Retrieving plugin
+Info: Loading facts
+Info: Caching catalog for uapa1
+Info: Applying configuration version '1455469846'
+Notice: /Stage[main]/Ntpconfig/Service[ntpd]/enable: enable changed 'false' to 'true'
+Notice: Applied catalog in 0.96 seconds
+[root@uapa1 ~]#
+ 
+10. Check the service status.
+[root@uapa1 ~]# systemctl status ntpd
+● ntpd.service - Network Time Service
+   Loaded: loaded (/usr/lib/systemd/system/ntpd.service; enabled; vendor preset: disabled)
+   Active: active (running) since Sun 2016-02-14 12:21:12 EST; 11min ago
+ Main PID: 11778 (ntpd)
+   CGroup: /system.slice/ntpd.service
+           └─11778 /usr/sbin/ntpd -u ntp:ntp -g
+
+Feb 14 12:21:12 uapa1 ntpd[11778]: Listen normally on 3 br0 192.168.203.134 UDP 123
+Feb 14 12:21:12 uapa1 ntpd[11778]: Listen normally on 4 virbr0 192.168.122.1 UDP 123
+Feb 14 12:21:12 uapa1 ntpd[11778]: Listen normally on 5 lo ::1 UDP 123
+Feb 14 12:21:12 uapa1 ntpd[11778]: Listen normally on 6 br0 fe80::20c:29ff:feda:2ef9 UDP 123
+Feb 14 12:21:12 uapa1 ntpd[11778]: Listening on routing socket on fd #23 for interface updates
+Feb 14 12:21:12 uapa1 systemd[1]: Started Network Time Service.
+Feb 14 12:21:13 uapa1 ntpd[11778]: 0.0.0.0 c016 06 restart
+Feb 14 12:21:13 uapa1 ntpd[11778]: 0.0.0.0 c012 02 freq_set kernel 0.000 PPM
+Feb 14 12:21:13 uapa1 ntpd[11778]: 0.0.0.0 c011 01 freq_not_set
+Feb 14 12:21:14 uapa1 ntpd[11778]: 0.0.0.0 c614 04 freq_mode
+[root@uapa1 ~]#
+NTP service has been enabled across the system reboot.
